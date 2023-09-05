@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Generic, TypeVar
+
 from pydantic import BaseModel
 
 from flask_openapi3 import OpenAPI
@@ -313,3 +315,39 @@ def test_form_examples(request):
             },
             "required": True
         }
+
+def test_responses_with_generics(request):
+    test_app = OpenAPI(request.node.name)
+    test_app.config["TESTING"] = True
+
+    class Detail(BaseModel):
+        num: int
+
+    T = TypeVar("T", bound=BaseModel)
+
+    class BaseResponse(BaseModel, Generic[T]):
+        detail: T
+
+    class BaseListResponse(BaseModel, Generic[T]):
+        items: list[BaseResponse[T]]
+
+    @test_app.get("/test", responses={"201": BaseListResponse[Detail]})
+    def endpoint_test():
+        return b'', 201
+
+    with test_app.test_client() as client:
+        resp = client.get("/openapi/openapi.json")
+        assert resp.status_code == 200
+        assert resp.json["paths"]["/test"]["get"]["responses"]["201"] == {
+            "description": "Created",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/BaseListResponse_test_responses_with_generics___locals___Detail_"}
+                },
+            },
+        }
+
+        schemas = resp.json["components"]["schemas"]
+        assert schemas['BaseListResponse_test_responses_with_generics___locals___Detail_']['title'] == 'BaseListResponse[test_responses_with_generics.<locals>.Detail]'
+        assert schemas['BaseListResponse_test_responses_with_generics___locals___Detail_']['properties']['items']['items']['$ref'] == '#/components/schemas/BaseResponse_Detail_'
+        assert schemas['BaseResponse_Detail_']['title'] == 'BaseResponse[test_responses_with_generics.<locals>.Detail]'

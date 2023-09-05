@@ -10,6 +10,7 @@ from typing import get_type_hints, Dict, Type, Callable, List, Tuple, Optional, 
 from flask import make_response, current_app
 from flask.wrappers import Response as FlaskResponse
 from pydantic import BaseModel, ValidationError
+from pydantic.json_schema import GenerateJsonSchema
 
 from ._http import HTTP_STATUS, HTTPMethod
 from .models import Encoding
@@ -277,6 +278,8 @@ def get_responses(
 ) -> None:
     _responses = {}
     _schemas = {}
+    # OpenAPI 3 support ^[a-zA-Z0-9\.\-_]+$ so we should normalize __name__
+    generater = GenerateJsonSchema()
 
     for key, response in responses.items():
         if response is None:
@@ -287,12 +290,13 @@ def get_responses(
                 response["description"] = HTTP_STATUS.get(key, "")
             _responses[key] = Response(**response)
         else:
+            name = generater.normalize_name(response.__name__)
             schema = get_model_schema(response)
             _responses[key] = Response(
                 description=HTTP_STATUS.get(key, ""),
                 content={
                     "application/json": MediaType(
-                        schema=Schema(**{"$ref": f"{OPENAPI3_REF_PREFIX}/{response.__name__}"})
+                        schema=Schema(**{"$ref": f"{OPENAPI3_REF_PREFIX}/{name}"})
                     )})
 
             model_config: DefaultDict[str, Any] = response.model_config  # type: ignore
@@ -309,12 +313,12 @@ def get_responses(
                     _content["application/json"].encoding = openapi_extra.get("encoding")
                     _content.update(openapi_extra.get("content", {}))
 
-            _schemas[response.__name__] = Schema(**schema)
+            _schemas[name] = Schema(**schema)
             definitions = schema.get("$defs")
             if definitions:
                 # Add schema definitions to _schemas
                 for name, value in definitions.items():
-                    _schemas[name] = Schema(**value)
+                    _schemas[generater.normalize_name(name)] = Schema(**value)
 
     components_schemas.update(**_schemas)
     operation.responses = _responses
