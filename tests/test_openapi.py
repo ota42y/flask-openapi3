@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Generic, TypeVar
 
 from pydantic import BaseModel, Field
+from pydantic.generics import GenericModel
 
 from flask_openapi3 import OpenAPI
 
@@ -426,3 +427,43 @@ def test_body_with_complex_object(request):
         assert resp.status_code == 200
         assert set(["properties", "required", "title", "type"]) == set(
             resp.json['components']['schemas']['BaseRequestBody'].keys())
+
+
+
+class Detail(BaseModel):
+    num: int
+
+T = TypeVar("T", bound=BaseModel)
+
+class GenericResponse(GenericModel, Generic[T]):
+    detail: T
+
+class ListGenericResponse(GenericModel, Generic[T]):
+    items: list[GenericResponse[T]]
+
+def test_responses_with_generics(request):
+    test_app = OpenAPI(request.node.name)
+    test_app.config["TESTING"] = True
+
+
+    @test_app.get("/test", responses={"201": ListGenericResponse[Detail]})
+    def endpoint_test():
+        return b'', 201
+
+    with test_app.test_client() as client:
+        resp = client.get("/openapi/openapi.json")
+        assert resp.status_code == 200
+        assert resp.json["paths"]["/test"]["get"]["responses"]["201"] == {
+            "description": "Created",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/ListGenericResponse_Detail_"}
+                },
+            },
+        }
+
+        schemas = resp.json["components"]["schemas"]
+        assert schemas['ListGenericResponse_Detail_']['title'] == 'ListGenericResponse[Detail]'
+        assert schemas['ListGenericResponse_Detail_']['properties']['items']['items']['$ref'] == '#/components/schemas/GenericResponse_Detail_'
+        assert schemas['GenericResponse_Detail_']['title'] == 'GenericResponse[Detail]'
+        
