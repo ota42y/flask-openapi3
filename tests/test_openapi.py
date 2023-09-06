@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -378,6 +379,35 @@ def test_query_parameter_object(request):
                 "type": "integer",
             },
         }
+
+
+class HeaderParam(BaseModel):
+    app_name: Optional[str] = Field(None, description="app name")
+
+
+def test_header_parameter_object(request):
+    test_app = OpenAPI(request.node.name)
+    test_app.config["TESTING"] = True
+
+    @test_app.post("/test")
+    def endpoint_test(header: HeaderParam):
+        return {}, 200
+
+    with test_app.test_client() as client:
+        resp = client.get("/openapi/openapi.json")
+        assert resp.status_code == 200
+        assert resp.json["paths"]["/test"]["post"]["parameters"][0] == {
+            "description": "app name",
+            "in": "header",
+            "name": "app_name",
+            "required": False,
+            "schema": {
+                "description": "app name",
+                "title": "App Name",
+                "type": "string",
+            },
+        }
+
 
 class BaseRequestBody(BaseModel):
     base: BaseRequest
