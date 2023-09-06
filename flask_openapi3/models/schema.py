@@ -17,6 +17,12 @@ class Schema(BaseModel):
     https://spec.openapis.org/oas/v3.0.3#schema-object
     """
 
+    def __init__(self, **data: Any) -> None:
+        properties = set(self.__class__.__fields__.keys())
+        properties.add("$ref")
+        filterd = {k: v for k, v in data.items() if k in properties or k.startswith("x-")}
+        super().__init__(**filterd)
+
     title: Optional[str] = None
     multipleOf: Optional[float] = Field(default=None, gt=0.0)
     maximum: Optional[float] = None
